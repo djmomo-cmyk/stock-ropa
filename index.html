@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<title>Casa Pelliza · Stock</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+:root{--ink:#000;--panel:#15140f;--line:#2a281d;--gold:#fdb913;--txt:#f5f2ea;--mut:#9b9684;--bad:#ff6b5a}
+*{box-sizing:border-box;margin:0}
+body{background:var(--ink);color:var(--txt);font:16px/1.4 system-ui,sans-serif;padding-bottom:90px}
+button,input,select{font:inherit;color:inherit}
+.hide{display:none!important}
+#login{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px;padding:24px;text-align:center}
+#login img{width:200px;height:200px}
+.btn{background:var(--gold);color:#000;border:0;border-radius:10px;padding:13px 20px;font-weight:700;cursor:pointer}
+.btn.g{background:transparent;color:var(--txt);border:1px solid var(--line)}
+.btn.d{background:transparent;color:var(--bad);border:1px solid var(--bad)}
+header{position:sticky;top:0;z-index:5;background:var(--ink);padding:12px 14px;display:flex;gap:10px;align-items:center;border-bottom:1px solid var(--line)}
+header img{width:40px;height:40px;border-radius:50%}
+#q{flex:1;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 12px;min-width:0}
+#out{background:none;border:0;color:var(--mut);font-size:13px;cursor:pointer}
+main{padding:8px 14px}
+details.m>summary{list-style:none;cursor:pointer;font-size:22px;font-weight:800;padding:16px 0 6px;border-bottom:2px solid var(--gold)}
+details.m>summary::-webkit-details-marker{display:none}
+h3{font-size:14px;font-weight:600;color:var(--gold);margin:14px 0 8px}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden;cursor:pointer}
+.card .ph{aspect-ratio:1;background:#0c0b08 center/cover;display:flex;align-items:center;justify-content:center;color:var(--mut);font-size:13px}
+.card .i{padding:8px 10px}
+.card b{display:block}
+.tot{color:var(--gold);font-weight:700}
+.low{color:var(--bad)}
+.sm{font-size:12px;color:var(--mut)}
+#empty{padding:50px 10px;text-align:center;color:var(--mut)}
+#add{position:fixed;right:16px;bottom:calc(16px + env(safe-area-inset-bottom,0px));width:58px;height:58px;border-radius:50%;font-size:32px;line-height:1;z-index:6}
+#ed{position:fixed;inset:0;background:#000d;z-index:10;overflow:auto;padding:14px}
+#ed .box{background:var(--panel);border:1px solid var(--line);border-radius:14px;max-width:520px;margin:0 auto;padding:16px;display:grid;gap:10px}
+#ed input{width:100%;background:var(--ink);border:1px solid var(--line);border-radius:8px;padding:10px}
+#pv{width:100%;aspect-ratio:1;background:#0c0b08 center/cover;border-radius:10px;display:flex;align-items:center;justify-content:center;color:var(--mut);cursor:pointer}
+.vr{display:grid;grid-template-columns:1fr 1.4fr 70px 32px;gap:6px}
+.vr button{background:none;border:0;color:var(--bad);font-size:20px}
+.row{display:flex;gap:8px}.row>*{flex:1}
+#msg{color:var(--bad);font-size:14px;max-width:320px}
+</style>
+</head>
+<body>
+<section id="login">
+  <img src="icon-512.png" alt="Casa Pelliza">
+  <div><h1>Stock de ropa</h1><p class="sm">Entrá con tu cuenta de Google</p></div>
+  <button class="btn" id="in">Entrar con Google</button>
+  <p id="msg"></p>
+</section>
+
+<section id="app" class="hide">
+  <header><img src="icon-192.png" alt=""><input id="q" type="search" placeholder="Buscar marca, modelo o color"><button id="out">Salir</button></header>
+  <main id="list"></main>
+  <button class="btn" id="add" aria-label="Agregar producto">+</button>
+</section>
+
+<div id="ed" class="hide"><div class="box">
+  <input id="marca" list="dm" placeholder="Marca (ej: Nike)"><datalist id="dm"></datalist>
+  <input id="cat" list="dc" placeholder="Categoría (ej: Zapatillas, Remeras)"><datalist id="dc"></datalist>
+  <input id="mod" placeholder="Modelo">
+  <b>Talles, colores y cantidades</b>
+  <div id="vars" style="display:grid;gap:6px"></div>
+  <button class="btn g" id="addv">Agregar talle</button>
+  <div class="row"><button class="btn g" id="cx">Cancelar</button><button class="btn" id="sv">Guardar</button></div>
+  <button class="btn d hide" id="del">Eliminar producto</button>
+</div></div>
+
+<script type="module">
+import {initializeApp} from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
+import {getAuth,GoogleAuthProvider,signInWithPopup,onAuthStateChanged,signOut} from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
+import {getFirestore,collection,onSnapshot,doc,setDoc,addDoc,deleteDoc} from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+
+const app=initializeApp({
+  apiKey:"AIzaSyA6WElcI_Rj6u9KRYr3MhzyW3H3gOe6mJw",
+  authDomain:"stock-cp-ff324.firebaseapp.com",
+  projectId:"stock-cp-ff324",
+  storageBucket:"stock-cp-ff324.firebasestorage.app",
+  messagingSenderId:"182331480680",
+  appId:"1:182331480680:web:255c070a61a7cd46ec79dd"
+});
+const auth=getAuth(app),db=getFirestore(app),col=collection(db,"productos");
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+let items=[],cur=null,unsub=null;
+
+$("in").onclick=async()=>{
+  $("msg").textContent="";
+  try{await signInWithPopup(auth,new GoogleAuthProvider())}
+  catch(e){$("msg").textContent="No se pudo entrar: "+(e.code||e.message)}
+};
+$("out").onclick=()=>signOut(auth);
+onAuthStateChanged(auth,u=>{
+  if(unsub){unsub();unsub=null}
+  $("login").classList.toggle("hide",!!u);
+  $("app").classList.toggle("hide",!u);
+  if(!u)return;
+  unsub=onSnapshot(col,s=>{items=s.docs.map(d=>({id:d.id,...d.data()}));draw()},
+    ()=>{$("msg").textContent="Este mail no tiene permiso. Pedile al administrador que lo agregue.";signOut(auth)});
+});
+
+const total=p=>(p.vars||[]).reduce((a,v)=>a+(+v.n||0),0);
+function draw(){
+  const q=$("q").value.trim().toLowerCase();
+  const f=items.filter(p=>!q||[p.marca,p.cat,p.mod,...(p.vars||[]).map(v=>v.c+" "+v.t)].join(" ").toLowerCase().includes(q));
+  $("dm").innerHTML=[...new Set(items.map(p=>p.marca))].map(x=>`<option value="${esc(x)}">`).join("");
+  $("dc").innerHTML=[...new Set(items.map(p=>p.cat))].map(x=>`<option value="${esc(x)}">`).join("");
+  if(!f.length){$("list").innerHTML=`<div id="empty">${items.length?"No hay resultados.":"Todavía no cargaste productos. Tocá + para agregar el primero."}</div>`;return}
+  const g={};
+  f.forEach(p=>{((g[p.marca||"Sin marca"]??={})[p.cat||"Sin categoría"]??=[]).push(p)});
+  $("list").innerHTML=Object.keys(g).sort().map(m=>{
+    const n=Object.values(g[m]).flat().reduce((a,p)=>a+total(p),0);
+    return `<details class="m" ${q?"open":""}><summary>${esc(m)} <span class="sm">${n} u.</span></summary>`+
+    Object.keys(g[m]).sort().map(c=>`<h3>${esc(c)}</h3><div class="cards">`+
+      g[m][c].sort((a,b)=>(a.mod||"").localeCompare(b.mod||"")).map(p=>{
+        const t=total(p);
+        return `<div class="card" data-id="${p.id}"><div class="i"><b>${esc(p.mod)}</b><span class="tot ${t<=2?"low":""}">${t} u.</span><div class="sm">${(p.vars||[]).filter(v=>+v.n>0).map(v=>esc(v.t)+" "+esc(v.c)+" ×"+(+v.n)).join(", ")}</div></div></div>`}).join("")+`</div>`).join("")+`</details>`;
+  }).join("");
+}
+$("q").oninput=draw;
+$("list").onclick=e=>{const c=e.target.closest(".card");if(c)open(items.find(p=>p.id===c.dataset.id))};
+$("add").onclick=()=>open(null);
+
+function open(p){
+  cur={id:p?.id||null,vars:JSON.parse(JSON.stringify(p?.vars||[{t:"",c:"",n:1}]))};
+  $("marca").value=p?.marca||"";$("cat").value=p?.cat||"";$("mod").value=p?.mod||"";
+  $("del").classList.toggle("hide",!p);
+  rv();$("ed").classList.remove("hide");
+}
+function rv(){
+  $("vars").innerHTML=cur.vars.map((v,i)=>`<div class="vr" data-i="${i}"><input data-k="t" placeholder="Talle" value="${esc(v.t)}"><input data-k="c" placeholder="Color" value="${esc(v.c)}"><input data-k="n" type="number" inputmode="numeric" min="0" value="${+v.n||0}"><button data-x aria-label="Quitar">×</button></div>`).join("");
+}
+$("vars").oninput=e=>{const r=e.target.closest(".vr");if(r)cur.vars[+r.dataset.i][e.target.dataset.k]=e.target.value};
+$("vars").onclick=e=>{if(e.target.dataset.x!==undefined){cur.vars.splice(+e.target.closest(".vr").dataset.i,1);rv()}};
+$("addv").onclick=()=>{cur.vars.push({t:"",c:"",n:1});rv()};
+$("cx").onclick=()=>$("ed").classList.add("hide");
+$("sv").onclick=async()=>{
+  const d={marca:$("marca").value.trim(),cat:$("cat").value.trim(),mod:$("mod").value.trim(),
+    vars:cur.vars.filter(v=>v.t||v.c).map(v=>({t:v.t.trim(),c:v.c.trim(),n:+v.n||0}))};
+  if(!d.marca||!d.mod){alert("Completá la marca y el modelo.");return}
+  try{cur.id?await setDoc(doc(db,"productos",cur.id),d):await addDoc(col,d);$("ed").classList.add("hide")}
+  catch(e){alert("No se pudo guardar: "+(e.code||e.message))}
+};
+$("del").onclick=async()=>{
+  if(!confirm("¿Eliminar este producto?"))return;
+  try{await deleteDoc(doc(db,"productos",cur.id));$("ed").classList.add("hide")}
+  catch(e){alert("No se pudo eliminar: "+(e.code||e.message))}
+};
+</script>
+</body>
+</html>
